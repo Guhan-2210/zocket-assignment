@@ -39,20 +39,23 @@ The system consists of two main components:
 ### Environment Variables Required
 
 env
-
+```
 DB_PASSWORD=your_db_password
 AWS_ACCESS_KEY=your_aws_access_key
 AWS_SECRET_KEY=your_aws_secret_key
 S3_BUCKET=your_s3_bucket_name
+```
 
 ### Database Configuration
 
 sql
+```
 CREATE DATABASE zocket;
 CREATE TABLE users (
 user_id SERIAL PRIMARY KEY,
 name VARCHAR(255) NOT NULL
 );
+
 CREATE TABLE products (
 product_id SERIAL PRIMARY KEY,
 user_id INTEGER REFERENCES users(user_id),
@@ -62,31 +65,35 @@ product_images TEXT[],
 compressed_product_images TEXT[],
 product_price DECIMAL(10,2) NOT NULL
 );
-
+```
 
 ## Installation & Setup
 
 1. Clone the repository:
 
 bash
+```
 git clone <repository-url>
-
+```
 2. Install dependencies:
-
+```
 go mod download
+```
 
 3. Start the backend service:
 
 bash
+```
 cd Backend
 go run main.go
-
+```
 4. Start the image processing microservice:
 
 bash
+```
 cd Microservice
 go run main.go
-
+```
 
 
 ## API Endpoints
@@ -111,8 +118,9 @@ go run main.go
 Run the test suite:
 
 bash
+```
 go test ./... -v
-
+```
 
 
 ## Architecture Details
