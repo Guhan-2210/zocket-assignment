@@ -1,6 +1,5 @@
 # Zocket SDE Assignment
 
-## Intro 
 The Product Management Backend System is a high-performance RESTful API built with Golang, designed for efficient product data management. It features PostgreSQL for storage, asynchronous image processing with message queues, and Redis caching for optimal performance. With robust logging, error handling, and scalability, it ensures reliability and real-time responsiveness.
 
 ## Demo Video
