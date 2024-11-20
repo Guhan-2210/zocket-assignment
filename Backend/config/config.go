@@ -6,12 +6,19 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	"backend/utils"
+	"os"
+	"github.com/joho/godotenv"
+	"log"
 )
 
 var DB *sql.DB
 var RDB *redis.Client
 
 func Init() {
+	err := godotenv.Load("../.env")
+	if err != nil {
+		log.Fatalf("Error loading .env file: %v", err)
+	}
 	initLogger()
 	initPostgres()
 	initRedis()
@@ -24,12 +31,16 @@ func initLogger() {
 
 func initPostgres() {
 	const (
-		host     = "localhost"
-		port     = 5432
-		user     = "postgres"
-		password = "DB_PASSWORD"
-		dbname   = "zocket"
+		host = "localhost"
+		port = 5432
+		user = "postgres"
+		dbname = "zocket"
 	)
+	password := os.Getenv("DB_PASSWORD")
+	if password == "" {
+		utils.Logger.Fatalf("DB_PASSWORD environment variable is not set")
+	}
+
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
 		host, port, user, password, dbname)
 
