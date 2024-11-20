@@ -23,7 +23,7 @@ The system consists of two main components:
 
 ## Features
 
-- User management (CRUD operations)
+- User management 
 - Product management with image handling
 - Asynchronous image processing and compression
 - Redis caching for improved performance
