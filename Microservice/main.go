@@ -10,32 +10,31 @@ import (
 	"log"
 	"net/http"
 	// "net/url"
-	"path/filepath"
-	"strings"
-	"sync"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/joho/godotenv"
 	"github.com/rabbitmq/amqp091-go"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 
 	"database/sql"
 
 	_ "github.com/lib/pq"
 )
 
-
-const (
-    host     = "localhost"
-    port     = 5432
-    user     = "postgres"
-    password = "DB_PASSWORD"
-    dbname   = "zocket"
+var (
+	host     = "localhost"
+	port     = 5432
+	user     = "postgres"
+	password = os.Getenv("DB_PASSWORD")
+	dbname   = "zocket"
 )
 
 var db *sql.DB
-
 
 // RabbitMQ settings
 const (
@@ -44,20 +43,18 @@ const (
 )
 
 // AWS S3 settings
-const (
-	awsRegion    = "ap-south-1"
-	awsAccessKey = "AWS_ACCESS_KEY"
-	awsSecretKey = "AWS_SECRET_KEY"
-	s3Bucket     = "S3_BUCKET"
+var (
+	awsRegion    = os.Getenv("AWS_REGION")
+	awsAccessKey = os.Getenv("AWS_ACCESS_KEY")
+	awsSecretKey = os.Getenv("AWS_SECRET_KEY")
+	s3Bucket     = os.Getenv("S3_BUCKET")
 	imageQuality = 50
 )
-
 
 type ImageMessage struct {
 	ImageURL  string `json:"image_url"`
 	ProductID int    `json:"product_id"`
 }
-
 
 // Helper function to connect to RabbitMQ
 func connectToRabbitMQ() (*amqp091.Connection, *amqp091.Channel, error) {
@@ -107,7 +104,7 @@ func sanitizeFileName(fileName string) string {
 		"&": "_",
 		"=": "_",
 		"%": "_",
-		" ":"_",
+		" ": "_",
 	}
 	for old, new := range replacements {
 		fileName = strings.ReplaceAll(fileName, old, new)
@@ -138,11 +135,8 @@ func uploadToS3(bucket, key string, file io.ReadSeeker) (string, error) {
 		return "", fmt.Errorf("failed to upload to S3: %v", err)
 	}
 
-	
-
 	return fmt.Sprintf("https://%s.s3.amazonaws.com/%s", bucket, encodedKey), nil
 }
-
 
 // Process an image
 func processImage(imageURL string, bucket string, quality int) (string, error) {
@@ -163,81 +157,82 @@ func processImage(imageURL string, bucket string, quality int) (string, error) {
 	return uploadToS3(bucket, outputFile, compressedImageReader)
 }
 
-
-
 func updateCompressedImagesInDB(productID int, s3URL string) error {
-    pgConnStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", host, port, user, password, dbname)
+	pgConnStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", host, port, user, password, dbname)
 
-    conn, err := sql.Open("postgres", pgConnStr)
-    if err != nil {
-        return fmt.Errorf("failed to connect to the database: %v", err)
-    }
-    defer conn.Close()
+	conn, err := sql.Open("postgres", pgConnStr)
+	if err != nil {
+		return fmt.Errorf("failed to connect to the database: %v", err)
+	}
+	defer conn.Close()
 
-    query := `UPDATE products
+	query := `UPDATE products
               SET compressed_product_images = array_append(compressed_product_images, $1)
               WHERE product_id = $2`
 
-    _, err = conn.Exec(query, s3URL, productID)
-    if err != nil {
-        return fmt.Errorf("failed to update product ID %d with S3 URL: %v", productID, err)
-    }
-    return nil
+	_, err = conn.Exec(query, s3URL, productID)
+	if err != nil {
+		return fmt.Errorf("failed to update product ID %d with S3 URL: %v", productID, err)
+	}
+	return nil
 }
-
-
-
 
 func processQueueMessages(ch *amqp091.Channel, queue string, wg *sync.WaitGroup) {
-    defer wg.Done()
+	defer wg.Done()
 
-    msgs, err := ch.Consume(
-        queue,
-        "",    // Consumer tag
-        true,  // Auto-ack
-        false, // Exclusive
-        false, // No-local
-        false, // No-wait
-        nil,   // Args
-    )
-    if err != nil {
-        log.Fatalf("Failed to register consumer: %v", err)
-    }
+	msgs, err := ch.Consume(
+		queue,
+		"",    // Consumer tag
+		true,  // Auto-ack
+		false, // Exclusive
+		false, // No-local
+		false, // No-wait
+		nil,   // Args
+	)
+	if err != nil {
+		log.Fatalf("Failed to register consumer: %v", err)
+	}
 
-    for msg := range msgs {
-        var imageMessage ImageMessage
-        err := json.Unmarshal(msg.Body, &imageMessage)
-        if err != nil {
-            log.Printf("Invalid message format: %v", err)
-            continue
-        }
+	for msg := range msgs {
+		var imageMessage ImageMessage
+		err := json.Unmarshal(msg.Body, &imageMessage)
+		if err != nil {
+			log.Printf("Invalid message format: %v", err)
+			continue
+		}
 
-        imageURL := imageMessage.ImageURL
-        productID := imageMessage.ProductID
-        log.Printf("Processing image: %s for product ID: %d", imageURL, productID)
+		imageURL := imageMessage.ImageURL
+		productID := imageMessage.ProductID
+		log.Printf("Processing image: %s for product ID: %d", imageURL, productID)
 
-        // Process the image (compress and upload to S3)
-        s3URL, err := processImage(imageURL, s3Bucket, imageQuality)
-        if err != nil {
-            log.Printf("Error processing image %s: %v", imageURL, err)
-            continue
-        }
+		// Process the image (compress and upload to S3)
+		s3URL, err := processImage(imageURL, s3Bucket, imageQuality)
+		if err != nil {
+			log.Printf("Error processing image %s: %v", imageURL, err)
+			continue
+		}
 
-        log.Printf("Image for product ID %d successfully uploaded to S3: %s", productID, s3URL)
+		log.Printf("Image for product ID %d successfully uploaded to S3: %s", productID, s3URL)
 
-        // Update the database with the compressed image URL
-        err = updateCompressedImagesInDB(productID, s3URL)
-        if err != nil {
-            log.Printf("Error updating database for product ID %d: %v", productID, err)
-        } else {
-            log.Printf("Database updated for product ID %d with S3 URL: %s", productID, s3URL)
-        }
-    }
+		// Update the database with the compressed image URL
+		err = updateCompressedImagesInDB(productID, s3URL)
+		if err != nil {
+			log.Printf("Error updating database for product ID %d: %v", productID, err)
+		} else {
+			log.Printf("Database updated for product ID %d with S3 URL: %s", productID, s3URL)
+		}
+	}
 }
 
-
-
 func main() {
+
+	// Load environment variables from .env file
+	err := godotenv.Load("../.env")
+	if err != nil {
+		log.Fatalf("Error loading .env file: %v", err)
+	}
+
+	// Continue with RabbitMQ setup and worker initialization
 	conn, ch, err := connectToRabbitMQ()
 	if err != nil {
 		log.Fatalf("Failed to set up RabbitMQ connection: %v", err)
